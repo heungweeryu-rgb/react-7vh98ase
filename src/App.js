@@ -2,18 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sun, Moon, Clock, Home, Box, BookOpen, User, Flame, ArrowLeft, CheckCircle2, Mic, X, Pencil, Trash2, Check, Sparkles, Wand2, Loader2, Bot } from 'lucide-react';
 
 // --- Gemini API 연동 설정 ---
-// 부모님의 진짜 API 키가 안전하게 입력되어 있습니다.
+// ⭐⭐⭐ 부모님의 진짜 열쇠를 큰따옴표("") 안에 꼭 붙여넣어 주세요! ⭐⭐⭐
 const apiKey = "AIzaSyBx3JgGB0MxKTw2OFljfWZPV_hR3hTs3Nk"; 
 
 const callGeminiAPI = async (prompt, isJson = false) => {
   const key = apiKey.trim();
 
-  // 구글 서버가 일시적으로 거부할 때를 대비해, 최신 엔진부터 구형 엔진까지 번갈아 문을 두드리는 자동 우회 시스템
-  const modelsToTry = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest', 
-    'gemini-pro'
-  ];
+  if (!key || key === "여기에_진짜_API_키를_붙여넣으세요" || key.includes("AIzaSyBx3JgGB0Mx")) {
+    throw new Error("앗! 앱에 아직 '진짜 API 키'가 들어가지 않았어요. 스택블리츠 코드 6번째 줄을 부모님의 진짜 열쇠로 바꿔주세요!");
+  }
+
+  // 가장 안정적인 최신 모델 딱 하나만 사용합니다.
+  const model = 'gemini-1.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   
   const systemPrompt = "당신은 36개월 미만의 아이를 키우는 한국 부모를 돕는 따뜻하고 전문적인 육아 멘토이자 동화 작가입니다. 항상 친절하고 다정한 말투를 사용하세요.\n\n";
   const finalPrompt = systemPrompt + prompt;
@@ -22,64 +23,56 @@ const callGeminiAPI = async (prompt, isJson = false) => {
     contents: [{ parts: [{ text: finalPrompt }] }]
   };
 
-  let lastErrorMessage = "";
-
-  for (const model of modelsToTry) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
     
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await response.json();
+    const data = await response.json();
 
-      if (!response.ok) {
-        if (response.status === 404 || response.status === 400) {
-           lastErrorMessage = data.error?.message || "지원하지 않는 모델입니다.";
-           continue; // 에러가 나면 앱이 죽지 않고 다음 모델로 넘어갑니다!
-        }
-        const errorMsg = data.error?.message || '알 수 없는 오류';
-        throw new Error(errorMsg);
-      }
+    if (!response.ok) {
+      const errorMsg = data.error?.message || '알 수 없는 오류';
       
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!text) {
-         throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
+      // 구글 서버 에러를 정확하게 부모님께 번역해서 알려줍니다.
+      if (response.status === 400 && errorMsg.toLowerCase().includes('api key')) {
+         throw new Error("API 키(열쇠)가 잘못되었습니다. 구글 AI 스튜디오에서 복사한 '진짜 열쇠' 전체를 코드 6번째 줄에 정확히 넣어주세요!");
       }
+      if (response.status === 403) throw new Error("API 키 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
+      if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
+      if (response.status === 404) throw new Error("구글 서버가 현재 마법을 준비 중입니다. 잠시 후 다시 시도해주세요.");
       
-      // JSON 응답일 경우 안전하게 추출
-      if (isJson) {
-        try {
-          text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const jsonStart = text.indexOf('{');
-          const jsonEnd = text.lastIndexOf('}') + 1;
-          if (jsonStart === -1 || jsonEnd === 0) {
-             throw new Error("AI 응답에서 놀이 형식을 찾을 수 없습니다.");
-          }
-          const jsonString = text.substring(jsonStart, jsonEnd);
-          return JSON.parse(jsonString);
-        } catch (parseError) {
-          throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
-        }
-      }
-
-      return text; // 성공 시 여기서 텍스트 반환!
-      
-    } catch (error) {
-      if (error.message.includes("404") || error.message.includes("400")) {
-         lastErrorMessage = error.message;
-         continue; 
-      }
-      throw error; 
+      throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
     }
-  }
+    
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!text) {
+       throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
+    }
+    
+    // JSON 응답일 경우 안전하게 추출
+    if (isJson) {
+      try {
+        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const jsonStart = text.indexOf('{');
+        const jsonEnd = text.lastIndexOf('}') + 1;
+        if (jsonStart === -1 || jsonEnd === 0) {
+           throw new Error("AI 응답에서 놀이 형식을 찾을 수 없습니다.");
+        }
+        const jsonString = text.substring(jsonStart, jsonEnd);
+        return JSON.parse(jsonString);
+      } catch (parseError) {
+        throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+      }
+    }
 
-  // 모든 모델이 거부당했을 때의 최종 안내
-  throw new Error(`현재 발급받으신 API 열쇠가 구글 서버에서 차단된 상태입니다. 구글 AI 스튜디오에 가셔서 기존 열쇠를 삭제하시고 '새로운 열쇠(Create API Key)'를 발급받아 교체해주세요!\n(상세: ${lastErrorMessage})`);
+    return text; 
+    
+  } catch (error) {
+    throw new Error(error.message); 
+  }
 };
 
 const App = () => {
@@ -380,7 +373,8 @@ const App = () => {
       
       {currentView === 'home' && (
         <header className="p-6 pb-2 bg-slate-900">
-          <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl p-5 mb-3 flex items-center gap-4 border border-slate-700 shadow-lg relative overflow-hidden">
+          {/* 안녕 지온 상단 박스 (폭은 얇게 유지하되, 이미지는 다시 원래 크기로 복구!) */}
+          <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-3 px-4 mb-3 flex items-center gap-4 border border-slate-700 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl -translate-x-10 -translate-y-10 pointer-events-none"></div>
             <img 
               src="https://i.imgur.com/eoKsu9m.jpeg" 
@@ -404,10 +398,11 @@ const App = () => {
                 {currentSchedule.icon}
               </div>
               <div>
-                <p className="text-[11px] text-slate-400 font-medium mb-0.5">
-                  현재 일과 (LA: {formatTime(laTime)})
-                </p>
-                <h2 className="text-base font-bold text-white">{currentSchedule.title}</h2>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-xs text-slate-300 font-medium">지금은</span>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-bold tracking-wide border border-indigo-500/30">LA {formatTime(laTime)}</span>
+                </div>
+                <h2 className="text-base font-bold text-white leading-tight">{currentSchedule.title}</h2>
               </div>
             </div>
           </div>
@@ -424,9 +419,10 @@ const App = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div onClick={() => { setSelectedActivity(todayPhysical); setCurrentView('detail'); }} className="bg-slate-800 rounded-3xl overflow-hidden shadow-sm border border-slate-700 flex flex-col cursor-pointer hover:bg-slate-700 transition-all active:scale-95">
-                <div className="relative h-44 w-full">
+                {/* 추천 놀이 이미지 크기 축소 (h-44 -> h-28) */}
+                <div className="relative h-28 w-full">
                   <img src={todayPhysical.image} alt={todayPhysical.title} onError={handleImageError} className="w-full h-full object-cover opacity-90"/>
-                  <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-bold bg-green-900/80 text-green-300 shadow-sm backdrop-blur-sm`}>{todayPhysical.tag}</span>
+                  <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-[10px] font-bold bg-green-900/80 text-green-300 shadow-sm backdrop-blur-sm`}>{todayPhysical.tag}</span>
                 </div>
                 <div className="p-4 flex-1 flex flex-col justify-between">
                   <h4 className="font-bold text-white text-sm mb-2">{todayPhysical.title}</h4>
@@ -438,9 +434,10 @@ const App = () => {
               </div>
 
               <div onClick={() => { setSelectedActivity(todaySensory); setCurrentView('detail'); }} className="bg-slate-800 rounded-3xl overflow-hidden shadow-sm border border-slate-700 flex flex-col cursor-pointer hover:bg-slate-700 transition-all active:scale-95">
-                <div className="relative h-44 w-full bg-slate-700">
+                {/* 추천 놀이 이미지 크기 축소 (h-44 -> h-28) */}
+                <div className="relative h-28 w-full bg-slate-700">
                   <img src={todaySensory.image} alt={todaySensory.title} onError={handleImageError} className="w-full h-full object-cover opacity-80 mix-blend-luminosity"/>
-                  <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-bold bg-yellow-900/80 text-yellow-300 shadow-sm backdrop-blur-sm`}>{todaySensory.tag}</span>
+                  <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-[10px] font-bold bg-yellow-900/80 text-yellow-300 shadow-sm backdrop-blur-sm`}>{todaySensory.tag}</span>
                 </div>
                 <div className="p-4 flex-1 flex flex-col justify-between">
                   <h4 className="font-bold text-white text-sm mb-2">{todaySensory.title}</h4>
@@ -453,19 +450,21 @@ const App = () => {
             </div>
 
             <div className="mt-8">
-              <h3 className="text-lg font-bold text-white mb-4">빠른 기록</h3>
+              {/* 폰트 축소 (text-lg -> text-base, 마진 축소) */}
+              <h3 className="text-base font-bold text-white mb-3">빠른 기록</h3>
               <div className="flex gap-4">
-                <button onClick={addMealRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-6 px-4 flex flex-col items-center justify-center gap-2 border border-slate-700 active:scale-95">
-                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><span className="text-xl">🍽️</span></div>
-                  <span className="text-sm font-semibold text-green-400">식사 기록</span>
+                <button onClick={addMealRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-3 px-2 flex flex-col items-center justify-center gap-1.5 border border-slate-700 active:scale-95">
+                  <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><span className="text-lg">🍽️</span></div>
+                  {/* 버튼 폰트 축소 (text-xs -> text-[11px]) */}
+                  <span className="text-[11px] font-semibold text-green-400">식사 기록</span>
                 </button>
-                <button onClick={addSleepRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-6 px-4 flex flex-col items-center justify-center gap-2 border border-slate-700 active:scale-95">
-                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><span className="text-xl">💤</span></div>
-                  <span className="text-sm font-semibold text-blue-400">수면 기록</span>
+                <button onClick={addSleepRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-3 px-2 flex flex-col items-center justify-center gap-1.5 border border-slate-700 active:scale-95">
+                  <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><span className="text-lg">💤</span></div>
+                  <span className="text-[11px] font-semibold text-blue-400">수면 기록</span>
                 </button>
-                <button onClick={startRecording} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-6 px-4 flex flex-col items-center justify-center gap-2 border border-slate-700 active:scale-95">
-                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><Mic className="w-5 h-5 text-yellow-400" /></div>
-                  <span className="text-sm font-semibold text-yellow-400">음성 기록</span>
+                <button onClick={startRecording} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-3 px-2 flex flex-col items-center justify-center gap-1.5 border border-slate-700 active:scale-95">
+                  <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><Mic className="w-4 h-4 text-yellow-400" /></div>
+                  <span className="text-[11px] font-semibold text-yellow-400">음성 기록</span>
                 </button>
               </div>
 
@@ -476,7 +475,7 @@ const App = () => {
                   </div>
                   <div className="text-left">
                     <span className="text-sm font-bold text-indigo-200 block">마법의 AI 잠자리 동화</span>
-                    <span className="text-xs text-indigo-300/70">{profile.name}가 주인공인 수면 동화 만들기</span>
+                    <span className="text-[10px] text-indigo-300/70 mt-0.5 block">{profile.name}가 주인공인 수면 동화 만들기</span>
                   </div>
                 </div>
                 <Wand2 className="w-5 h-5 text-indigo-400 opacity-50" />
@@ -485,7 +484,7 @@ const App = () => {
 
             {records.length > 0 && (
               <div className="mt-8">
-                <h3 className="text-lg font-bold text-white mb-4">최근 활동 기록</h3>
+                <h3 className="text-base font-bold text-white mb-3">최근 활동 기록</h3>
                 <div className="space-y-3">
                   {records.map((record) => (
                     <div key={record.id} className="bg-slate-800 py-5 px-4 rounded-2xl shadow-sm border border-slate-700 flex items-center gap-4">
@@ -496,7 +495,7 @@ const App = () => {
                       <div className="flex-1 min-w-0">
                         <p className="text-slate-300 text-sm truncate">
                           <span className="mr-2">{record.text}</span>
-                          <span className="text-xs text-slate-500">{formatTime(record.time)}</span>
+                          <span className="text-[10px] text-slate-500">{formatTime(record.time)}</span>
                         </p>
                       </div>
                     </div>
@@ -508,17 +507,21 @@ const App = () => {
         )}
 
         {currentView === 'library' && (
-          <div className="px-6 pt-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">놀이 보관함</h2>
+          <div className="px-6 pt-6">
+            {/* 홈 화면과 어울리는 보라빛 테마의 멋진 헤더 적용 */}
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-5 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
+              <Box className="w-6 h-6 text-fuchsia-400 relative z-10" />
+              <h2 className="text-lg font-bold text-white relative z-10 tracking-tight">놀이 보관함</h2>
             </div>
+            
             <div className="bg-gradient-to-br from-indigo-900 to-purple-900 p-5 rounded-3xl shadow-lg border border-indigo-500/30 mb-8 relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-32 h-32 bg-fuchsia-500/20 rounded-full blur-3xl"></div>
               <div className="flex items-center gap-2 mb-3 relative z-10">
                 <Sparkles className="w-5 h-5 text-yellow-400" />
-                <h3 className="font-bold text-white text-lg">AI 맞춤 놀이 뚝딱!</h3>
+                <h3 className="font-bold text-white text-base">AI 맞춤 놀이 뚝딱!</h3>
               </div>
-              <p className="text-indigo-200 text-xs mb-4 relative z-10">집에 있는 재료를 알려주시면, {profile.name}만을 위한 창의적인 놀호를 만들어드려요.</p>
+              <p className="text-indigo-200 text-[11px] mb-4 relative z-10 leading-relaxed">집에 있는 재료를 알려주시면, {profile.name}만을 위한 창의적인 놀이를 만들어드려요.</p>
               <div className="flex gap-2 relative z-10">
                 <input type="text" value={aiMaterialsInput} onChange={(e) => setAiMaterialsInput(e.target.value)} placeholder="예: 빈 휴지심, 색종이, 스티커" className="flex-1 bg-slate-900/80 text-white text-sm rounded-xl p-3 border border-indigo-500/50 focus:outline-none focus:border-yellow-400 placeholder:text-slate-500" />
                 <button onClick={handleGenerateAIPlay} disabled={isGeneratingPlay || !aiMaterialsInput.trim()} className="bg-yellow-400 hover:bg-yellow-500 disabled:bg-slate-700 text-slate-900 font-bold px-4 rounded-xl transition-colors flex items-center justify-center shrink-0">
@@ -600,31 +603,37 @@ const App = () => {
         )}
 
         {currentView === 'diary' && (
-          <div className="px-6 pt-8">
-            <h2 className="text-2xl font-bold text-white mb-6">성장 일기</h2>
+          <div className="px-6 pt-6">
+            {/* 홈 화면과 어울리는 에메랄드빛 테마의 멋진 헤더 적용 */}
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-5 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
+              <BookOpen className="w-6 h-6 text-emerald-400 relative z-10" />
+              <h2 className="text-lg font-bold text-white relative z-10 tracking-tight">성장 일기</h2>
+            </div>
+            
             <div className="bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-700 mb-8 relative">
               <textarea value={diaryText} onChange={(e) => setDiaryText(e.target.value)} placeholder={`오늘 ${profile.name}의 빛나는 순간을 기록해보세요...`} className="w-full bg-slate-900 text-white text-sm rounded-2xl p-4 border border-slate-600 focus:outline-none focus:border-yellow-400 resize-none min-h-[120px] mb-4 leading-relaxed" />
               <div className="flex gap-2">
-                <button onClick={handleGenerateAIFeedback} disabled={!diaryText.trim() || isGeneratingFeedback} className="flex-1 py-3 bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-500/30 text-indigo-300 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                  {isGeneratingFeedback ? <Loader2 className="w-5 h-5 animate-spin" /> : <Bot className="w-5 h-5" />}
+                <button onClick={handleGenerateAIFeedback} disabled={!diaryText.trim() || isGeneratingFeedback} className="flex-1 py-3 bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-500/30 text-indigo-300 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                  {isGeneratingFeedback ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
                   {isGeneratingFeedback ? '멘토가 읽고 있어요...' : 'AI 멘토 조언 듣기'}
                 </button>
-                <button onClick={addDiaryRecord} disabled={!diaryText.trim()} className="flex-1 py-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
-                  <BookOpen className="w-5 h-5" /> 일기 저장하기
+                <button onClick={addDiaryRecord} disabled={!diaryText.trim()} className="flex-1 py-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                  <BookOpen className="w-4 h-4" /> 일기 저장하기
                 </button>
               </div>
               {aiFeedbackText && (
                 <div className="mt-4 p-5 bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-indigo-500/40 rounded-2xl relative">
-                  <div className="absolute -top-3 left-6 bg-slate-900 px-2 text-indigo-400 font-bold text-xs flex items-center gap-1"><Sparkles className="w-3 h-3" /> 오은영st AI 멘토</div>
-                  <p className="text-sm text-indigo-100 leading-relaxed whitespace-pre-wrap mt-2">{aiFeedbackText}</p>
+                  <div className="absolute -top-3 left-6 bg-slate-900 px-2 text-indigo-400 font-bold text-[10px] flex items-center gap-1 border border-indigo-500/30 rounded-full"><Sparkles className="w-3 h-3" /> 오은영st AI 멘토</div>
+                  <p className="text-[13px] text-indigo-100 leading-relaxed whitespace-pre-wrap mt-2">{aiFeedbackText}</p>
                 </div>
               )}
             </div>
 
             <div className="space-y-3">
               <div className="flex justify-between items-end mb-4">
-                <h3 className="text-lg font-bold text-white">전체 기록 모아보기</h3>
-                <span className="text-xs text-slate-400">총 {records.length}개</span>
+                <h3 className="text-base font-bold text-white">전체 기록 모아보기</h3>
+                <span className="text-[11px] text-slate-400">총 {records.length}개</span>
               </div>
               {records.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-sm bg-slate-800/50 rounded-2xl border border-slate-700 border-dashed">아직 작성된 기록이 없어요.</div>
@@ -645,9 +654,9 @@ const App = () => {
                       ) : (
                         <>
                           <div className="flex-1 min-w-0">
-                            <p className="text-slate-300 text-sm truncate w-full">
+                            <p className="text-slate-300 text-[13px] truncate w-full">
                               <span className="mr-2">{record.text}</span>
-                              <span className="text-xs text-slate-500">{formatTime(record.time)}</span>
+                              <span className="text-[10px] text-slate-500">{formatTime(record.time)}</span>
                             </p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
@@ -664,10 +673,16 @@ const App = () => {
         )}
 
         {currentView === 'profile' && (
-          <div className="px-6 pt-8 pb-10">
-            <h2 className="text-2xl font-bold text-white mb-6">아이 프로필</h2>
+          <div className="px-6 pt-6 pb-10">
+            {/* 홈 화면과 어울리는 하늘빛 테마의 멋진 헤더 적용 */}
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-6 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
+              <User className="w-6 h-6 text-sky-400 relative z-10" />
+              <h2 className="text-lg font-bold text-white relative z-10 tracking-tight">아이 프로필</h2>
+            </div>
+            
             <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-lg flex flex-col items-center relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-900/30 to-transparent pointer-events-none"></div>
+              <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-sky-900/20 to-transparent pointer-events-none"></div>
               <img 
                 src="https://i.imgur.com/eoKsu9m.jpeg" 
                 alt="지온이 프로필" 
@@ -678,39 +693,39 @@ const App = () => {
                 <div className="w-full space-y-4 relative z-10">
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">이름</label>
-                    <input type="text" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-yellow-400 transition-colors" />
+                    <input type="text" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-sky-400 transition-colors" />
                   </div>
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">생년월일</label>
-                    <input type="date" value={profile.birthDate} onChange={(e) => setProfile({...profile, birthDate: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-yellow-400 transition-colors" />
+                    <input type="date" value={profile.birthDate} onChange={(e) => setProfile({...profile, birthDate: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-sky-400 transition-colors" />
                   </div>
                   <div className="flex gap-4">
                     <div className="flex-1">
                       <label className="text-xs text-slate-400 block mb-1">키 (cm)</label>
-                      <input type="number" value={profile.height} onChange={(e) => setProfile({...profile, height: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-yellow-400 transition-colors" />
+                      <input type="number" value={profile.height} onChange={(e) => setProfile({...profile, height: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-sky-400 transition-colors" />
                     </div>
                     <div className="flex-1">
                       <label className="text-xs text-slate-400 block mb-1">몸무게 (kg)</label>
-                      <input type="number" value={profile.weight} onChange={(e) => setProfile({...profile, weight: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-yellow-400 transition-colors" />
+                      <input type="number" value={profile.weight} onChange={(e) => setProfile({...profile, weight: e.target.value})} className="w-full bg-slate-900 text-white rounded-xl p-3 border border-slate-600 focus:outline-none focus:border-sky-400 transition-colors" />
                     </div>
                   </div>
-                  <button onClick={() => setIsEditingProfile(false)} className="w-full py-3 mt-4 bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-bold rounded-xl transition-colors shadow-md">저장하기</button>
+                  <button onClick={() => setIsEditingProfile(false)} className="w-full py-3 mt-4 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl transition-colors shadow-md">저장하기</button>
                 </div>
               ) : (
                 <div className="w-full relative z-10">
                   <h3 className="text-2xl font-bold text-white text-center mb-6">{profile.name}</h3>
                   <div className="bg-slate-900 rounded-2xl p-5 space-y-4 border border-slate-700">
                     <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                      <span className="text-slate-400 text-sm font-medium">생년월일</span><span className="text-white">{profile.birthDate}</span>
+                      <span className="text-slate-400 text-[13px] font-medium">생년월일</span><span className="text-white text-sm font-semibold">{profile.birthDate}</span>
                     </div>
                     <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                      <span className="text-slate-400 text-sm font-medium">키</span><span className="text-white">{profile.height} cm</span>
+                      <span className="text-slate-400 text-[13px] font-medium">키</span><span className="text-white text-sm font-semibold">{profile.height} cm</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-sm font-medium">몸무게</span><span className="text-white">{profile.weight} kg</span>
+                      <span className="text-slate-400 text-[13px] font-medium">몸무게</span><span className="text-white text-sm font-semibold">{profile.weight} kg</span>
                     </div>
                   </div>
-                  <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 mt-6 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"><Pencil className="w-4 h-4" /> 프로필 수정하기</button>
+                  <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 mt-6 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"><Pencil className="w-4 h-4" /> 프로필 수정하기</button>
                 </div>
               )}
             </div>
