@@ -12,9 +12,6 @@ const callGeminiAPI = async (prompt, isJson = false) => {
     throw new Error("앗! 앱에 진짜 API 키(열쇠)를 넣는 것을 깜빡하셨어요. 스택블리츠 코드 6번째 줄을 확인해주세요!");
   }
 
-  const model = 'gemini-1.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-  
   const systemPrompt = "당신은 36개월 미만의 아이를 키우는 한국 부모를 돕는 따뜻하고 전문적인 육아 멘토이자 동화 작가입니다. 항상 친절하고 다정한 말투를 사용하세요.\n\n";
   const finalPrompt = systemPrompt + prompt;
 
@@ -22,49 +19,78 @@ const callGeminiAPI = async (prompt, isJson = false) => {
     contents: [{ parts: [{ text: finalPrompt }] }]
   };
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    const data = await response.json();
+  // 🔥 근본 문제 해결: 구글 서버가 특정 모델을 404로 거부할 경우를 대비한 자동 우회 시스템
+  // 안정적으로 작동할 때까지 최신 버전 -> 구버전 순서로 자동으로 문을 두드려봅니다.
+  const modelsToTry = [
+    'gemini-1.5-flash-latest', 
+    'gemini-1.5-pro-latest', 
+    'gemini-1.5-flash',
+    'gemini-pro'
+  ];
+  
+  let lastErrorMessage = "";
 
-    if (!response.ok) {
-      const errorMsg = data.error?.message || '알 수 없는 오류';
-      if (response.status === 403) throw new Error("API 키가 올바르지 않거나 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
-      if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
-      throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
-    }
+  for (const model of modelsToTry) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
     
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) {
-       throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
-    }
-    
-    // JSON 응답일 경우 더 안전하게 추출 (인사말 등이 섞여 있어도 {} 안의 내용만 뽑아냄)
-    if (isJson) {
-      try {
-        const jsonStart = text.indexOf('{');
-        const jsonEnd = text.lastIndexOf('}') + 1;
-        if (jsonStart === -1 || jsonEnd === 0) {
-           throw new Error("AI 응답에서 JSON 형식을 찾을 수 없습니다.");
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+
+      if (!response.ok) {
+        // 404 (모델을 못 찾음) 또는 400 (지원하지 않는 기능) 에러 발생 시, 앱이 죽지 않고 다음 모델로 자동 재시도
+        if (response.status === 404 || response.status === 400) {
+           lastErrorMessage = data.error?.message || `${model} 모델을 찾을 수 없습니다.`;
+           continue; 
         }
-        const jsonString = text.substring(jsonStart, jsonEnd);
-        return JSON.parse(jsonString);
-      } catch (parseError) {
-        console.error("JSON 파싱 에러:", text);
-        throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+        
+        const errorMsg = data.error?.message || '알 수 없는 오류';
+        if (response.status === 403) throw new Error("API 키가 올바르지 않거나 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
+        if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
+        throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
       }
-    }
+      
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+         throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
+      }
+      
+      // JSON 응답일 경우 더 안전하게 추출 (인사말 등이 섞여 있어도 {} 안의 내용만 뽑아냄)
+      if (isJson) {
+        try {
+          const jsonStart = text.indexOf('{');
+          const jsonEnd = text.lastIndexOf('}') + 1;
+          if (jsonStart === -1 || jsonEnd === 0) {
+             throw new Error("AI 응답에서 JSON 형식을 찾을 수 없습니다.");
+          }
+          const jsonString = text.substring(jsonStart, jsonEnd);
+          return JSON.parse(jsonString);
+        } catch (parseError) {
+          console.error("JSON 파싱 에러:", text);
+          throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+        }
+      }
 
-    return text;
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
+      // 성공적으로 답변을 가져왔다면 함수를 완전히 끝내고 텍스트 반환
+      return text; 
+      
+    } catch (error) {
+      if (error.message.includes("404") || error.message.includes("400")) {
+         lastErrorMessage = error.message;
+         continue; // 네트워크 에러라도 404면 다음 모델 시도
+      }
+      throw error; 
+    }
   }
+
+  // 4가지 모델을 다 두드려봤는데도 문이 안 열렸을 때 나오는 최후의 메시지
+  throw new Error(`현재 구글 AI 서버가 응답하지 않습니다. 모델을 찾을 수 없대요. 잠시 후 다시 시도해주세요.\n(상세: ${lastErrorMessage})`);
 };
 
 const App = () => {
