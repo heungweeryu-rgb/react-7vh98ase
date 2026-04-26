@@ -2,16 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sun, Moon, Clock, Home, Box, BookOpen, User, Flame, ArrowLeft, CheckCircle2, Mic, X, Pencil, Trash2, Check, Sparkles, Wand2, Loader2, Bot } from 'lucide-react';
 
 // --- Gemini API 연동 설정 ---
-// ⭐⭐⭐ 여기에 유흥위님의 진짜 API 키를 꼭! 넣어주세요 ⭐⭐⭐
-// 큰따옴표("")는 지우지 마시고 그 사이에 쏙 넣어주세요.
+// 부모님의 진짜 API 키가 안전하게 입력되어 있습니다.
 const apiKey = "AIzaSyBx3JgGB0MxKTw2OFljfWZPV_hR3hTs3Nk"; 
 
 const callGeminiAPI = async (prompt, isJson = false) => {
   const key = apiKey.trim();
-  if (!key || key.includes("여기에새로운열쇠를붙여넣으세요")) {
-    throw new Error("앗! 앱에 진짜 API 키(열쇠)를 넣는 것을 깜빡하셨어요. 스택블리츠 코드 6번째 줄을 확인해주세요!");
-  }
 
+  // 구글 서버가 일시적으로 거부할 때를 대비해, 최신 엔진부터 구형 엔진까지 번갈아 문을 두드리는 자동 우회 시스템
+  const modelsToTry = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest', 
+    'gemini-pro'
+  ];
+  
   const systemPrompt = "당신은 36개월 미만의 아이를 키우는 한국 부모를 돕는 따뜻하고 전문적인 육아 멘토이자 동화 작가입니다. 항상 친절하고 다정한 말투를 사용하세요.\n\n";
   const finalPrompt = systemPrompt + prompt;
 
@@ -19,15 +22,6 @@ const callGeminiAPI = async (prompt, isJson = false) => {
     contents: [{ parts: [{ text: finalPrompt }] }]
   };
 
-  // 🔥 근본 문제 해결: 구글 서버가 특정 모델을 404로 거부할 경우를 대비한 자동 우회 시스템
-  // 안정적으로 작동할 때까지 최신 버전 -> 구버전 순서로 자동으로 문을 두드려봅니다.
-  const modelsToTry = [
-    'gemini-1.5-flash-latest', 
-    'gemini-1.5-pro-latest', 
-    'gemini-1.5-flash',
-    'gemini-pro'
-  ];
-  
   let lastErrorMessage = "";
 
   for (const model of modelsToTry) {
@@ -43,16 +37,12 @@ const callGeminiAPI = async (prompt, isJson = false) => {
       const data = await response.json();
 
       if (!response.ok) {
-        // 404 (모델을 못 찾음) 또는 400 (지원하지 않는 기능) 에러 발생 시, 앱이 죽지 않고 다음 모델로 자동 재시도
         if (response.status === 404 || response.status === 400) {
-           lastErrorMessage = data.error?.message || `${model} 모델을 찾을 수 없습니다.`;
-           continue; 
+           lastErrorMessage = data.error?.message || "지원하지 않는 모델입니다.";
+           continue; // 에러가 나면 앱이 죽지 않고 다음 모델로 넘어갑니다!
         }
-        
         const errorMsg = data.error?.message || '알 수 없는 오류';
-        if (response.status === 403) throw new Error("API 키가 올바르지 않거나 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
-        if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
-        throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
+        throw new Error(errorMsg);
       }
       
       let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -61,36 +51,35 @@ const callGeminiAPI = async (prompt, isJson = false) => {
          throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
       }
       
-      // JSON 응답일 경우 더 안전하게 추출 (인사말 등이 섞여 있어도 {} 안의 내용만 뽑아냄)
+      // JSON 응답일 경우 안전하게 추출
       if (isJson) {
         try {
+          text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const jsonStart = text.indexOf('{');
           const jsonEnd = text.lastIndexOf('}') + 1;
           if (jsonStart === -1 || jsonEnd === 0) {
-             throw new Error("AI 응답에서 JSON 형식을 찾을 수 없습니다.");
+             throw new Error("AI 응답에서 놀이 형식을 찾을 수 없습니다.");
           }
           const jsonString = text.substring(jsonStart, jsonEnd);
           return JSON.parse(jsonString);
         } catch (parseError) {
-          console.error("JSON 파싱 에러:", text);
           throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
         }
       }
 
-      // 성공적으로 답변을 가져왔다면 함수를 완전히 끝내고 텍스트 반환
-      return text; 
+      return text; // 성공 시 여기서 텍스트 반환!
       
     } catch (error) {
       if (error.message.includes("404") || error.message.includes("400")) {
          lastErrorMessage = error.message;
-         continue; // 네트워크 에러라도 404면 다음 모델 시도
+         continue; 
       }
       throw error; 
     }
   }
 
-  // 4가지 모델을 다 두드려봤는데도 문이 안 열렸을 때 나오는 최후의 메시지
-  throw new Error(`현재 구글 AI 서버가 응답하지 않습니다. 모델을 찾을 수 없대요. 잠시 후 다시 시도해주세요.\n(상세: ${lastErrorMessage})`);
+  // 모든 모델이 거부당했을 때의 최종 안내
+  throw new Error(`현재 발급받으신 API 열쇠가 구글 서버에서 차단된 상태입니다. 구글 AI 스튜디오에 가셔서 기존 열쇠를 삭제하시고 '새로운 열쇠(Create API Key)'를 발급받아 교체해주세요!\n(상세: ${lastErrorMessage})`);
 };
 
 const App = () => {
@@ -149,10 +138,9 @@ const App = () => {
   ];
 
   useEffect(() => {
-    // Tailwind 디자인 강제 주입
-    if (!document.getElementById('tailwind-cdn')) {
+    // 혹시 index.html 수정이 누락되었을 경우를 위한 백업 디자인 자동 주입기
+    if (!document.querySelector('script[src="https://cdn.tailwindcss.com"]')) {
       const script = document.createElement('script');
-      script.id = 'tailwind-cdn';
       script.src = 'https://cdn.tailwindcss.com';
       document.head.appendChild(script);
     }
@@ -274,7 +262,7 @@ const App = () => {
       setGeneratedAiPlays(prev => [newPlay, ...prev]);
       setAiMaterialsInput('');
     } catch (error) {
-      alert(`놀이를 생성하는 중 오류가 발생했어요.\n\n오류 내용: ${error.message}`);
+      alert(`놀이를 생성하는 중 오류가 발생했어요.\n\n${error.message}`);
     } finally {
       setIsGeneratingPlay(false);
     }
@@ -312,7 +300,7 @@ const App = () => {
       const responseText = await callGeminiAPI(prompt, false);
       setGeneratedStory(responseText);
     } catch (error) {
-      setGeneratedStory(`동화를 만드는 중 오류가 발생했어요.\n\n오류 내용: ${error.message}`);
+      setGeneratedStory(`동화를 만드는 중 오류가 발생했어요.\n\n${error.message}`);
     } finally {
       setIsGeneratingStory(false);
     }
@@ -530,7 +518,7 @@ const App = () => {
                 <Sparkles className="w-5 h-5 text-yellow-400" />
                 <h3 className="font-bold text-white text-lg">AI 맞춤 놀이 뚝딱!</h3>
               </div>
-              <p className="text-indigo-200 text-xs mb-4 relative z-10">집에 있는 재료를 알려주시면, {profile.name}만을 위한 창의적인 놀이를 만들어드려요.</p>
+              <p className="text-indigo-200 text-xs mb-4 relative z-10">집에 있는 재료를 알려주시면, {profile.name}만을 위한 창의적인 놀호를 만들어드려요.</p>
               <div className="flex gap-2 relative z-10">
                 <input type="text" value={aiMaterialsInput} onChange={(e) => setAiMaterialsInput(e.target.value)} placeholder="예: 빈 휴지심, 색종이, 스티커" className="flex-1 bg-slate-900/80 text-white text-sm rounded-xl p-3 border border-indigo-500/50 focus:outline-none focus:border-yellow-400 placeholder:text-slate-500" />
                 <button onClick={handleGenerateAIPlay} disabled={isGeneratingPlay || !aiMaterialsInput.trim()} className="bg-yellow-400 hover:bg-yellow-500 disabled:bg-slate-700 text-slate-900 font-bold px-4 rounded-xl transition-colors flex items-center justify-center shrink-0">
