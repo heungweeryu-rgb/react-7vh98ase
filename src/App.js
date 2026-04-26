@@ -7,13 +7,13 @@ import { Sun, Moon, Clock, Home, Box, BookOpen, User, Flame, ArrowLeft, CheckCir
 const apiKey = "AIzaSyBx3JgGB0MxKTw2OFljfWZPV_hR3hTs3Nk"; 
 
 const callGeminiAPI = async (prompt, isJson = false) => {
-  // API 키가 입력되지 않았을 경우를 대비한 안전 장치
-  if (!apiKey || apiKey.includes("여기에새로운열쇠를붙여넣으세요")) {
+  const key = apiKey.trim();
+  if (!key || key.includes("여기에새로운열쇠를붙여넣으세요")) {
     throw new Error("앗! 앱에 진짜 API 키(열쇠)를 넣는 것을 깜빡하셨어요. 스택블리츠 코드 6번째 줄을 확인해주세요!");
   }
 
   const model = 'gemini-1.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   
   const systemPrompt = "당신은 36개월 미만의 아이를 키우는 한국 부모를 돕는 따뜻하고 전문적인 육아 멘토이자 동화 작가입니다. 항상 친절하고 다정한 말투를 사용하세요.\n\n";
   const finalPrompt = systemPrompt + prompt;
@@ -21,10 +21,6 @@ const callGeminiAPI = async (prompt, isJson = false) => {
   const payload = {
     contents: [{ parts: [{ text: finalPrompt }] }]
   };
-
-  if (isJson) {
-    payload.generationConfig = { responseMimeType: "application/json" };
-  }
 
   try {
     const response = await fetch(url, {
@@ -48,9 +44,20 @@ const callGeminiAPI = async (prompt, isJson = false) => {
        throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
     }
     
+    // JSON 응답일 경우 더 안전하게 추출 (인사말 등이 섞여 있어도 {} 안의 내용만 뽑아냄)
     if (isJson) {
-      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      return JSON.parse(text);
+      try {
+        const jsonStart = text.indexOf('{');
+        const jsonEnd = text.lastIndexOf('}') + 1;
+        if (jsonStart === -1 || jsonEnd === 0) {
+           throw new Error("AI 응답에서 JSON 형식을 찾을 수 없습니다.");
+        }
+        const jsonString = text.substring(jsonStart, jsonEnd);
+        return JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error("JSON 파싱 에러:", text);
+        throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+      }
     }
 
     return text;
@@ -217,7 +224,9 @@ const App = () => {
     try {
       const prompt = `사용자의 아이 이름은 '${profile.name}'이고, 나이는 약 3세(36개월 미만)입니다. 
       집에 있는 다음 재료들을 활용한 안전하고 재미있는 놀이를 딱 1개 추천해주세요: ${aiMaterialsInput}.
-      응답은 반드시 다음 JSON 포맷으로만 작성해주세요:
+      응답은 반드시 마크다운(\`\`\`json 등) 없이 순수한 JSON 객체 형태로만 출력해주세요. 
+      
+      반드시 지켜야 할 출력 포맷:
       {
         "title": "놀이 제목 (예: 반짝반짝 호일 공놀이)",
         "tag": "신체 활동 또는 감각 활동",
