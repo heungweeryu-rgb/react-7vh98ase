@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sun, Moon, Clock, Home, Box, BookOpen, User, Flame, ArrowLeft, CheckCircle2, Mic, X, Pencil, Trash2, Check, Sparkles, Wand2, Loader2, Bot } from 'lucide-react';
+import { Sun, Moon, Clock, Home, Box, BookOpen, User, Flame, ArrowLeft, CheckCircle2, Mic, X, Pencil, Trash2, Check, Sparkles, Wand2, Loader2, Bot, KeyRound } from 'lucide-react';
 
-// --- Gemini API 연동 설정 ---
-// ⭐⭐⭐ 부모님의 진짜 열쇠를 큰따옴표("") 안에 꼭 붙여넣어 주세요! ⭐⭐⭐
-const apiKey = "AIzaSyBx3JgGB0MxKTw2OFljfWZPV_hR3hTs3Nk"; 
-
-const callGeminiAPI = async (prompt, isJson = false) => {
+const callGeminiAPI = async (prompt, apiKey, isJson = false) => {
   const key = apiKey.trim();
 
-  if (!key || key === "여기에_진짜_API_키를_붙여넣으세요" || key.includes("AIzaSyBx3JgGB0Mx")) {
-    throw new Error("앗! 앱에 아직 '진짜 API 키'가 들어가지 않았어요. 스택블리츠 코드 6번째 줄을 부모님의 진짜 열쇠로 바꿔주세요!");
+  if (!key) {
+    throw new Error("API 키가 없습니다. 프로필 메뉴에서 열쇠를 다시 입력해주세요.");
   }
 
-  // 가장 안정적인 최신 모델 딱 하나만 사용합니다.
-  const model = 'gemini-1.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-  
+  // 🔥 [불도저 로직] 구글에 존재하는 모든 모델 이름을 순서대로 직접 찔러봅니다!
+  // 하나라도 404(못 찾음)가 뜨면 앱이 죽지 않고 바로 다음 모델로 시도합니다.
+  const modelsToTry = [
+    'gemini-1.5-flash-latest', // 가장 똑똑하고 최신인 모델
+    'gemini-1.5-flash',        // 안정화된 플래시 모델
+    'gemini-1.0-pro',          // 1.0 프로 모델
+    'gemini-pro'               // 가장 기본 구형 모델
+  ];
+
   const systemPrompt = "당신은 36개월 미만의 아이를 키우는 한국 부모를 돕는 따뜻하고 전문적인 육아 멘토이자 동화 작가입니다. 항상 친절하고 다정한 말투를 사용하세요.\n\n";
   const finalPrompt = systemPrompt + prompt;
 
@@ -23,59 +24,83 @@ const callGeminiAPI = async (prompt, isJson = false) => {
     contents: [{ parts: [{ text: finalPrompt }] }]
   };
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    const data = await response.json();
+  let lastErrorMessage = "";
 
-    if (!response.ok) {
-      const errorMsg = data.error?.message || '알 수 없는 오류';
+  // 모델 목록을 하나씩 돌면서 문을 두드립니다.
+  for (const model of modelsToTry) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       
-      // 구글 서버 에러를 정확하게 부모님께 번역해서 알려줍니다.
-      if (response.status === 400 && errorMsg.toLowerCase().includes('api key')) {
-         throw new Error("API 키(열쇠)가 잘못되었습니다. 구글 AI 스튜디오에서 복사한 '진짜 열쇠' 전체를 코드 6번째 줄에 정확히 넣어주세요!");
-      }
-      if (response.status === 403) throw new Error("API 키 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
-      if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
-      if (response.status === 404) throw new Error("구글 서버가 현재 마법을 준비 중입니다. 잠시 후 다시 시도해주세요.");
-      
-      throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
-    }
-    
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) {
-       throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
-    }
-    
-    // JSON 응답일 경우 안전하게 추출
-    if (isJson) {
-      try {
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const jsonStart = text.indexOf('{');
-        const jsonEnd = text.lastIndexOf('}') + 1;
-        if (jsonStart === -1 || jsonEnd === 0) {
-           throw new Error("AI 응답에서 놀이 형식을 찾을 수 없습니다.");
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.error?.message || '알 수 없는 오류';
+        
+        if (response.status === 400 && errorMsg.toLowerCase().includes('api key')) {
+           throw new Error("API 키(열쇠)가 잘못되었습니다. 복사하기 아이콘을 눌러 전체를 정확히 가져왔는지 확인해주세요!");
         }
-        const jsonString = text.substring(jsonStart, jsonEnd);
-        return JSON.parse(jsonString);
-      } catch (parseError) {
-        throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+        if (response.status === 403) throw new Error("API 키 권한이 없습니다. AI 스튜디오에서 키를 다시 확인해주세요.");
+        if (response.status === 429) throw new Error("구글 무료 사용 한도를 초과했어요! 1분 정도 기다렸다가 다시 시도해주세요.");
+        
+        // 404 (모델 못 찾음) 에러면 다음 모델로 넘어가기 위해 기록만 해둡니다.
+        if (response.status === 404) {
+           lastErrorMessage = `[${model}] 모델 접근 불가`;
+           continue; 
+        }
+        
+        throw new Error(`구글 서버 오류입니다. (${response.status}: ${errorMsg})`);
       }
-    }
+      
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+         throw new Error('인공지능이 대답을 만들지 못했어요. 키워드를 조금 바꿔보세요!');
+      }
+      
+      // JSON 응답일 경우 안전하게 추출
+      if (isJson) {
+        try {
+          text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const jsonStart = text.indexOf('{');
+          const jsonEnd = text.lastIndexOf('}') + 1;
+          if (jsonStart === -1 || jsonEnd === 0) {
+             throw new Error("AI 응답에서 놀이 형식을 찾을 수 없습니다.");
+          }
+          const jsonString = text.substring(jsonStart, jsonEnd);
+          return JSON.parse(jsonString);
+        } catch (parseError) {
+          throw new Error('인공지능이 놀이 형식을 잘못 만들었어요. 다시 버튼을 눌러주세요!');
+        }
+      }
 
-    return text; 
-    
-  } catch (error) {
-    throw new Error(error.message); 
+      // 에러 없이 성공했다면 텍스트 반환하고 반복문 탈출!
+      return text; 
+      
+    } catch (error) {
+      // 404 에러나 접근 불가 에러면 앱을 죽이지 않고 다음 모델(gemini-pro 등)로 넘어갑니다.
+      if (error.message.includes("접근 불가") || error.message.includes("404")) {
+         continue; 
+      }
+      throw error; 
+    }
   }
+
+  // 4가지 모델 문을 다 두드렸는데도 다 잠겨있을 때 나오는 메시지
+  throw new Error(`부모님의 열쇠로 쓸 수 있는 구글 AI 모델이 하나도 없어요!\n구글 AI 스튜디오에서 '새로운 열쇠(Create API Key)'를 새로 발급받아서 입력해주세요.`);
 };
 
 const App = () => {
+  // --- API 키 UI 연동 로직 ---
+  const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+  const [showKeySetup, setShowKeySetup] = useState(!localStorage.getItem('gemini_api_key'));
+  const [tempKeyInput, setTempKeyInput] = useState('');
+
   // --- 1. LA 시간 및 일과 로직 ---
   const [laTime, setLaTime] = useState(new Date());
   const [currentSchedule, setCurrentSchedule] = useState({ title: '로딩 중...', icon: <Clock /> });
@@ -131,7 +156,6 @@ const App = () => {
   ];
 
   useEffect(() => {
-    // 혹시 index.html 수정이 누락되었을 경우를 위한 백업 디자인 자동 주입기
     if (!document.querySelector('script[src="https://cdn.tailwindcss.com"]')) {
       const script = document.createElement('script');
       script.src = 'https://cdn.tailwindcss.com';
@@ -225,6 +249,17 @@ const App = () => {
     });
   };
 
+  const handleSaveApiKey = () => {
+    if (tempKeyInput.trim().length < 10) {
+      alert("열쇠가 너무 짧아요! '복사하기' 아이콘을 눌러 전체를 복사해주세요.");
+      return;
+    }
+    const key = tempKeyInput.trim();
+    localStorage.setItem('gemini_api_key', key);
+    setApiKey(key);
+    setShowKeySetup(false);
+  };
+
   const handleGenerateAIPlay = async () => {
     if (!aiMaterialsInput.trim()) return;
     setIsGeneratingPlay(true);
@@ -243,7 +278,7 @@ const App = () => {
         "instructions": ["1단계 상세 설명", "2단계 설명", "3단계 설명"]
       }`;
 
-      const aiResponse = await callGeminiAPI(prompt, true);
+      const aiResponse = await callGeminiAPI(prompt, apiKey, true);
       
       const newPlay = {
         ...aiResponse,
@@ -255,7 +290,12 @@ const App = () => {
       setGeneratedAiPlays(prev => [newPlay, ...prev]);
       setAiMaterialsInput('');
     } catch (error) {
-      alert(`놀이를 생성하는 중 오류가 발생했어요.\n\n${error.message}`);
+      alert(`오류 발생:\n\n${error.message}`);
+      if (error.message.includes("잘못되었습니다") || error.message.includes("없어요")) {
+        localStorage.removeItem('gemini_api_key');
+        setApiKey('');
+        setShowKeySetup(true);
+      }
     } finally {
       setIsGeneratingPlay(false);
     }
@@ -272,10 +312,15 @@ const App = () => {
       이 부모의 마음을 깊이 공감하고 위로하는 다정한 피드백(2~3문장)과, 이 일기 내용과 관련된 아주 작고 실용적인 육아 꿀팁 1가지를 작성해주세요. 
       딱딱한 텍스트가 아니라 부드럽고 따뜻한 대화체로 작성해주세요. 줄바꿈을 적절히 사용하세요.`;
 
-      const responseText = await callGeminiAPI(prompt, false);
+      const responseText = await callGeminiAPI(prompt, apiKey, false);
       setAiFeedbackText(responseText);
     } catch (error) {
-      setAiFeedbackText(`앗, 멘토님과 연결에 실패했어요.\n원인: ${error.message}`);
+      setAiFeedbackText(`앗, 연결 실패:\n${error.message}`);
+      if (error.message.includes("잘못되었습니다") || error.message.includes("없어요")) {
+        localStorage.removeItem('gemini_api_key');
+        setApiKey('');
+        setShowKeySetup(true);
+      }
     } finally {
       setIsGeneratingFeedback(false);
     }
@@ -290,10 +335,15 @@ const App = () => {
       동화의 주인공은 반드시 '${profile.name}'이어야 합니다. 
       자극적이지 않고 잠이 솔솔 올 수 있도록 다정하고 부드러운 구어체(해요체 등)를 사용하고, 줄바꿈을 예쁘게 적용해주세요.`;
 
-      const responseText = await callGeminiAPI(prompt, false);
+      const responseText = await callGeminiAPI(prompt, apiKey, false);
       setGeneratedStory(responseText);
     } catch (error) {
-      setGeneratedStory(`동화를 만드는 중 오류가 발생했어요.\n\n${error.message}`);
+      setGeneratedStory(`오류 발생:\n\n${error.message}`);
+      if (error.message.includes("잘못되었습니다") || error.message.includes("없어요")) {
+        localStorage.removeItem('gemini_api_key');
+        setApiKey('');
+        setShowKeySetup(true);
+      }
     } finally {
       setIsGeneratingStory(false);
     }
@@ -368,12 +418,45 @@ const App = () => {
     e.target.src = "https://picsum.photos/400/300?blur=2"; 
   };
 
+  // --- 최초 열쇠 입력 화면 ---
+  if (showKeySetup) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 px-6 font-sans max-w-md mx-auto shadow-2xl relative">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/40 via-slate-900 to-slate-900"></div>
+        <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl relative z-10 w-full flex flex-col items-center animate-in fade-in zoom-in duration-300">
+          <div className="w-16 h-16 bg-yellow-400/20 rounded-full flex items-center justify-center mb-6">
+            <KeyRound className="w-8 h-8 text-yellow-400 animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-3 text-center tracking-tight">마법의 열쇠가 필요해요!</h2>
+          <p className="text-sm text-slate-400 text-center mb-8 leading-relaxed">
+            인공지능 마법을 깨우려면 열쇠가 필요해요.<br/>
+            구글 AI 스튜디오에서 복사한 <span className="text-yellow-400 font-bold">'전체 API 키'</span>를<br/>아래 빈칸에 붙여넣어 주세요.
+          </p>
+          <div className="w-full space-y-4">
+            <input 
+              type="password" 
+              value={tempKeyInput} 
+              onChange={(e) => setTempKeyInput(e.target.value)} 
+              placeholder="AIzaSy... (여기에 붙여넣기)" 
+              className="w-full bg-slate-900 text-white text-sm rounded-xl p-4 border border-slate-600 focus:outline-none focus:border-yellow-400 transition-colors"
+            />
+            <button 
+              onClick={handleSaveApiKey} 
+              className="w-full py-4 bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-bold rounded-xl transition-colors shadow-lg shadow-yellow-400/20 flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-5 h-5" /> 저장하고 시작하기
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-slate-900 font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden text-slate-100">
       
       {currentView === 'home' && (
         <header className="p-6 pb-2 bg-slate-900">
-          {/* 안녕 지온 상단 박스 (폭은 얇게 유지하되, 이미지는 다시 원래 크기로 복구!) */}
           <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-3 px-4 mb-3 flex items-center gap-4 border border-slate-700 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl -translate-x-10 -translate-y-10 pointer-events-none"></div>
             <img 
@@ -419,7 +502,6 @@ const App = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div onClick={() => { setSelectedActivity(todayPhysical); setCurrentView('detail'); }} className="bg-slate-800 rounded-3xl overflow-hidden shadow-sm border border-slate-700 flex flex-col cursor-pointer hover:bg-slate-700 transition-all active:scale-95">
-                {/* 추천 놀이 이미지 크기 축소 (h-44 -> h-28) */}
                 <div className="relative h-28 w-full">
                   <img src={todayPhysical.image} alt={todayPhysical.title} onError={handleImageError} className="w-full h-full object-cover opacity-90"/>
                   <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-[10px] font-bold bg-green-900/80 text-green-300 shadow-sm backdrop-blur-sm`}>{todayPhysical.tag}</span>
@@ -434,7 +516,6 @@ const App = () => {
               </div>
 
               <div onClick={() => { setSelectedActivity(todaySensory); setCurrentView('detail'); }} className="bg-slate-800 rounded-3xl overflow-hidden shadow-sm border border-slate-700 flex flex-col cursor-pointer hover:bg-slate-700 transition-all active:scale-95">
-                {/* 추천 놀이 이미지 크기 축소 (h-44 -> h-28) */}
                 <div className="relative h-28 w-full bg-slate-700">
                   <img src={todaySensory.image} alt={todaySensory.title} onError={handleImageError} className="w-full h-full object-cover opacity-80 mix-blend-luminosity"/>
                   <span className={`absolute top-3 left-3 px-2 py-1 rounded-full text-[10px] font-bold bg-yellow-900/80 text-yellow-300 shadow-sm backdrop-blur-sm`}>{todaySensory.tag}</span>
@@ -450,12 +531,10 @@ const App = () => {
             </div>
 
             <div className="mt-8">
-              {/* 폰트 축소 (text-lg -> text-base, 마진 축소) */}
               <h3 className="text-base font-bold text-white mb-3">빠른 기록</h3>
               <div className="flex gap-4">
                 <button onClick={addMealRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-3 px-2 flex flex-col items-center justify-center gap-1.5 border border-slate-700 active:scale-95">
                   <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center shadow-sm"><span className="text-lg">🍽️</span></div>
-                  {/* 버튼 폰트 축소 (text-xs -> text-[11px]) */}
                   <span className="text-[11px] font-semibold text-green-400">식사 기록</span>
                 </button>
                 <button onClick={addSleepRecord} className="flex-1 bg-slate-800 hover:bg-slate-700 transition-colors rounded-2xl py-3 px-2 flex flex-col items-center justify-center gap-1.5 border border-slate-700 active:scale-95">
@@ -508,7 +587,6 @@ const App = () => {
 
         {currentView === 'library' && (
           <div className="px-6 pt-6">
-            {/* 홈 화면과 어울리는 보라빛 테마의 멋진 헤더 적용 */}
             <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-5 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
               <Box className="w-6 h-6 text-fuchsia-400 relative z-10" />
@@ -604,7 +682,6 @@ const App = () => {
 
         {currentView === 'diary' && (
           <div className="px-6 pt-6">
-            {/* 홈 화면과 어울리는 에메랄드빛 테마의 멋진 헤더 적용 */}
             <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-5 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
               <BookOpen className="w-6 h-6 text-emerald-400 relative z-10" />
@@ -674,7 +751,6 @@ const App = () => {
 
         {currentView === 'profile' && (
           <div className="px-6 pt-6 pb-10">
-            {/* 홈 화면과 어울리는 하늘빛 테마의 멋진 헤더 적용 */}
             <div className="bg-slate-800/80 backdrop-blur-sm rounded-3xl py-4 px-5 mb-6 flex items-center gap-3 border border-slate-700 shadow-lg relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl pointer-events-none -translate-y-10 translate-x-10"></div>
               <User className="w-6 h-6 text-sky-400 relative z-10" />
@@ -725,7 +801,10 @@ const App = () => {
                       <span className="text-slate-400 text-[13px] font-medium">몸무게</span><span className="text-white text-sm font-semibold">{profile.weight} kg</span>
                     </div>
                   </div>
-                  <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 mt-6 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"><Pencil className="w-4 h-4" /> 프로필 수정하기</button>
+                  <div className="flex gap-2 mt-6">
+                    <button onClick={() => setIsEditingProfile(true)} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"><Pencil className="w-4 h-4" /> 프로필 수정하기</button>
+                    <button onClick={() => { localStorage.removeItem('gemini_api_key'); setApiKey(''); setShowKeySetup(true); }} className="px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 text-sm font-medium rounded-xl transition-colors flex items-center justify-center shadow-sm" title="API 열쇠 다시 입력하기"><KeyRound className="w-4 h-4" /></button>
+                  </div>
                 </div>
               )}
             </div>
